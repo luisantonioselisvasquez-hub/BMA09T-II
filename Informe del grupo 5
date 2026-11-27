@@ -1,0 +1,1097 @@
+INFORME TÉCNICO Y MONOGRÁFICO: ESTRUCTURAS DE COLAS DE PRIORIDAD, MONTÍCULOS BINARIOS Y MONTÍCULOS BINOMIALES
+Análisis Algorítmico, Modelado Matemático e Implementación de Código Modular en C++ (Dev-C++ 5.11 / GCC 4.9.2)
+Grupo 5: Heaps y Colas de Prioridad
+📌 CONFIGURACIÓN DIRECTA EN DEV-C++ 5.11
+Este informe ha sido optimizado y verificado específicamente para el entorno de desarrollo Dev-C++ 5.11 (compilador MinGW GCC 4.9.2). Todos los fragmentos de código fuente proporcionados están estructurados en C++ estándar (C++98 / C++11), incorporando funciones 'main()' completas y ejecutables. Para compilar en Dev-C++ 5.11 basta con presionar F9 (Compilar y Ejecutar). Si se utilizan características de C++11 como inicializadores de listas o 'nullptr', asegúrese de verificar en Herramientas -> Opciones del Compilador -> Añadir los siguientes comandos al llamar al compilador: -std=c++11.
+
+
+1. CONCEPTO DE HEAP: DEFINICIÓN DE LA ESTRUCTURA Y PROPIEDAD DE ORDEN
+Un Montículo (Heap) es una estructura de datos abstracta fundamentada en un árbol binario completo o casi completo que satisface rigurosamente una restricción estructural y una propiedad de ordenamiento jerárquico. La restricción de forma (Shape Property) establece que todos los niveles del árbol binario se encuentran completamente llenos, a excepción posiblemente del último nivel, el cual debe llenarse de manera estrictamente contigua de izquierda a derecha. Esta invariante garantiza que la altura h de un heap de n elementos sea de orden logarítmico h = ⌊log₂ n⌋, impidiendo cualquier degeneración del árbol en una lista enlazada.
+Demostración formal de la altura h: Dado un árbol binario completo de n nodos y altura h, el número mínimo de nodos ocurre cuando el nivel h tiene un único nodo en la posición más a la izquierda, dando n_min = 2^h. El número máximo de nodos ocurre cuando todos los niveles hasta h están totalmente llenos, dando n_max = 2^(h+1) - 1. Por lo tanto, 2^h ≤ n < 2^(h+1). Tomando el algoritmo de logaritmo en base 2: h ≤ log₂ n < h + 1, de donde se deriva directamente que h = ⌊log₂ n⌋.
+La propiedad de orden del heap (Heap Property) determina la relación cualitativa y jerárquica entre el valor de cualquier nodo padre P y los valores de sus nodos hijos inmediatos H. A partir de esta propiedad, se derivan las dos variantes fundamentales de los montículos binarios:
+Max-Heap (Montículo Máximo): Para todo nodo i diferente de la raíz, la clave de su padre es mayor o igual que la clave del nodo i (A[Parent(i)] ≥ A[i]). Como consecuencia matemática de la transitividad de la relación de orden, la clave de mayor valor de toda la estructura reside de forma incondicional en el nodo raíz (A[0]).
+Min-Heap (Montículo Mínimo): Para todo nodo i diferente de la raíz, la clave de su padre es menor o igual que la clave del nodo i (A[Parent(i)] ≤ A[i]). Esto garantiza que el elemento de menor valor dentro de todo el conjunto de datos esté ubicado inmediatamente en la raíz de la estructura.
+Es fundamental destacar que la propiedad de heap no impone un orden total entre los nodos hermanos (nodos situados en el mismo nivel bajo un mismo padre), ni tampoco entre nodos pertenecientes a subárboles distintos. Esta ausencia de ordenamiento total relativo distingue significativamente a un heap de un Árbol Binario de Búsqueda (BST) o un Árbol Rojo-Negro. Mientras que en un BST el recorrido in-order produce una secuencia perfectamente ordenada en tiempo lineal O(n), en un heap la estructura está optimizada de forma exclusiva para consultar y extraer el elemento extremo (máximo o mínimo) en tiempo constante O(1).
+
+Figura: Visualización jerárquica de un Max-Heap de 10 elementos y su mapeo biyectivo en memoria contigua.
+2. REPRESENTACIÓN DE HEAPS MEDIANTE ARREGLOS Y ARITMÉTICA DE ÍNDICES
+La propiedad de forma del árbol binario completo permite eliminar totalmente la necesidad de almacenar punteros explícitos a hijos y padres en memoria dinámica (como `Node* left, right, parent`), los cuales consumirían un overhead significativo de memoria (16 a 24 bytes por nodo en arquitecturas de 64 bits). En su lugar, un heap se representa físicamente mediante un arreglo unidimensional contiguo.
+Para un arreglo indexado desde 0 (0-based indexing), utilizado por estándar en el lenguaje C++ y en Dev-C++ 5.11, la posición topológica de los nodos en el árbol binario se relaciona con los índices del arreglo mediante las siguientes fórmulas aritméticas directas de bajo nivel:
+Índice del Padre de i: Parent(i) = ⌊ (i - 1) / 2 ⌋. En C++, la división entera entre 2 trunca automáticamente los decimales hacia abajo.
+Índice del Hijo Izquierdo de i: Left(i) = 2i + 1. Se obtiene eficientemente en C++ mediante desplazamiento de bits y suma: (i << 1) | 1.
+Índice del Hijo Derecho de i: Right(i) = 2i + 2. Equivalente a (i + 1) << 1 en operaciones a nivel de registros.
+En procesadores modernos, la navegación por el árbol mediante operaciones binarias bit a bit (`shift` y `bitwise OR`) saca máximo provecho de la jerarquía de memoria caché del procesador (Caché L1 y L2). El almacenamiento contiguo garantiza una localización espacial óptima (Spatial Locality), minimizando los fallos de caché (Cache Misses) en comparación con las estructuras basadas en nodos dispersos en el Heap de memoria dinámica.
+La siguiente tabla resume la correlación exacta entre la profundidad topológica del árbol binario y los rangos de índices correspondientes dentro del arreglo contiguo de almacenamiento:
+Nivel del Árbol (Profundidad)
+Rango de Índices (0-based)
+Número Máximo de Nodos
+Relación Aritmética en C++
+
+Nivel 0 (Raíz)
+i = 0
+1
+Raíz del Heap (Elemento Extremo)
+
+Nivel 1
+i ∈ [1, 2]
+2
+Left=1, Right=2
+
+Nivel 2
+i ∈ [3, 6]
+4
+Left(1)=3, Right(1)=4, Left(2)=5, Right(2)=6
+
+Nivel k
+i ∈ [2^k - 1, 2^(k+1) - 2]
+2^k
+Parent(i) = (i-1)/2
+
+
+3. OPERACIONES DE INSERCIÓN Y EXTRACCIÓN: PROCEDIMIENTOS SIFT-UP Y SIFT-DOWN
+Las operaciones de modificación en un heap binario deben alterar la estructura preservando de manera inviolable tanto la propiedad de forma como la propiedad de orden. Las dos rutinas auxiliares fundamentales para restaurar las invariantes del heap son el Reajuste Hacia Arriba (Sift-Up o Heapify-Up) y el Reajuste Hacia Abajo (Sift-Down o Heapify-Down).
+3.1 Inserción de Elementos (Procedimiento Sift-Up)
+Para agregar un nuevo elemento al heap, se siguen los siguientes pasos algorítmicos:
+1. Anexado al Final: El nuevo elemento se inserta en la primera posición disponible al final del arreglo contiguo (posición n), incrementando el tamaño del heap en 1. Esto preserva de forma inmediata la propiedad de forma del árbol.
+2. Flotación (Sift-Up): Se compara la clave del elemento recién insertado con la clave de su nodo padre. En un Max-Heap, si la clave del nuevo elemento es mayor que la de su padre, ambos elementos se intercambian (std::swap).
+3. Propagación Recursiva / Iterativa: El proceso de intercambio se repite ascendiendo por la rama de ancestros hasta que se cumpla A[Parent(i)] ≥ A[i] o se alcance la raíz (i = 0).
+Debido a que la altura del árbol binario completo está acotada strictly por h = ⌊log₂ n⌋, el procedimiento Sift-Up realiza como máximo h comparaciones e intercambios, garantizando una complejidad temporal en el peor caso de O(log n).
+3.2 Extracción del Mínimo / Máximo (Procedimiento Sift-Down)
+La eliminación del elemento con máxima prioridad (la raíz A[0]) se realiza mediante la siguiente secuencia de pasos:
+1. Reemplazo de la Raíz: Se copia la clave de la raíz A[0] para retornarla. A continuación, el último elemento del arreglo (ubicado en el índice n-1) se traslada a la posición 0, y se reduce el tamaño del heap en 1.
+2. Hundimiento (Sift-Down): El nuevo elemento ubicado en la raíz puede violar la propiedad de orden. Por lo tanto, se compara con sus hijos izquierdo y derecho.
+3. Selección del Hijo Dominante: En un Max-Heap, se identifica cuál de los dos hijos posee la clave mayor. Si la clave del nodo actual es menor que la de su hijo mayor, se realiza un intercambio entre el padre y dicho hijo.
+4. Propagación Descendente: El proceso desciende repetidamente por el subárbol afectado hasta que la clave del nodo sea mayor o igual a la de sus dos hijos, o el nodo se convierta en una hoja sin hijos.
+Al igual que Sift-Up, el recorrido de Sift-Down sigue un camino desde la raíz hacia las hojas, por lo que su complejidad temporal está acotada superiormente por O(log n).
+
+Figura: Mecanismo paso a paso de Flotación (Sift-Up) en Inserción y Hundimiento (Sift-Down) en Extracción.
+💻 Programa 1: Implementación de MaxHeap Génerico en C++11 (Compatible con Dev-C++ 5.11)
+// ============================================================================
+// IMPLEMENTACIÓN COMPLETA DE MAX-HEAP Y MIN-HEAP EN C++ (DEV-C++ 5.11)
+// Compilable directamente en Dev-C++ 5.11 con compilador GCC 4.9.2 / C++11
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <stdexcept>
+#include <algorithm>
+
+using namespace std;
+
+// Clase Templatizada para Max-Heap Binario
+template <typename T>
+class MaxHeap {
+private:
+    vector<T> heap;
+
+    int parent(int i) const { return (i - 1) / 2; }
+    int left(int i) const { return 2 * i + 1; }
+    int right(int i) const { return 2 * i + 2; }
+
+    void siftUp(int i) {
+        while (i > 0 && heap[parent(i)] < heap[i]) {
+            swap(heap[i], heap[parent(i)]);
+            i = parent(i);
+        }
+    }
+
+    void siftDown(int i) {
+        int maxIndex = i;
+        int l = left(i);
+        int r = right(i);
+        int size = heap.size();
+
+        if (l < size && heap[l] > heap[maxIndex]) {
+            maxIndex = l;
+        }
+        if (r < size && heap[r] > heap[maxIndex]) {
+            maxIndex = r;
+        }
+        if (i != maxIndex) {
+            swap(heap[i], heap[maxIndex]);
+            siftDown(maxIndex);
+        }
+    }
+
+public:
+    MaxHeap() {}
+
+    bool empty() const {
+        return heap.empty();
+    }
+
+    int size() const {
+        return heap.size();
+    }
+
+    void insert(const T& key) {
+        heap.push_back(key);
+        siftUp(heap.size() - 1);
+    }
+
+    T getMax() const {
+        if (heap.empty()) {
+            throw runtime_error("Error: El Heap está vacío.");
+        }
+        return heap[0];
+    }
+
+    T extractMax() {
+        if (heap.empty()) {
+            throw runtime_error("Error: El Heap está vacío.");
+        }
+        T maxItem = heap[0];
+        heap[0] = heap.back();
+        heap.pop_back();
+        if (!heap.empty()) {
+            siftDown(0);
+        }
+        return maxItem;
+    }
+
+    void printHeap() const {
+        cout << "[ ";
+        for (size_t i = 0; i < heap.size(); ++i) {
+            cout << heap[i] << " ";
+        }
+        cout << "]" << endl;
+    }
+};
+
+int main() {
+    cout << "=== DEMOSTRACION DE MAX-HEAP EN DEV-C++ 5.11 ===" << endl;
+    MaxHeap<int> mh;
+
+    int datos[] = {40, 20, 10, 80, 50, 90, 30, 15, 70, 60};
+    int n = sizeof(datos) / sizeof(datos[0]);
+
+    cout << "Insertando elementos secuencialmente..." << endl;
+    for (int i = 0; i < n; ++i) {
+        mh.insert(datos[i]);
+        cout << "Insertado: " << datos[i] << " -> Heap actual: ";
+        mh.printHeap();
+    }
+
+    cout << "\nEl elemento maximo en la raiz es: " << mh.getMax() << endl;
+
+    cout << "\nExtrayendo elementos en orden descendente (Heapsort implícito):" << endl;
+    while (!mh.empty()) {
+        cout << "Extraido Maximo: " << mh.extractMax() << " -> Estado del Heap: ";
+        mh.printHeap();
+    }
+
+    return 0;
+}
+
+
+
+4. CONSTRUCCIÓN DE HEAPS Y EL ALGORITMO HEAPIFY DE FLOYD
+Dada una colección no ordenada de n elementos almacenados en un arreglo, existen dos enfoques algorítmicos para transformarla en un heap válido:
+Enfoque 1 (Inserciones Sucesivas): Comenzar con un heap vacío e insertar los n elementos uno por uno mediante Sift-Up. Cada inserción k toma tiempo O(log k). La complejidad total es ∑ (k=1 a n) log k = log(n!) = O(n log n).
+Enfoque 2 (Algoritmo Heapify de Floyd): Construir el heap 'Bottom-Up' (desde las hojas hacia la raíz) utilizando reajustes Sift-Down. Este algoritmo logra construir un heap completo en tiempo estrictamente Lineal O(n).
+4.1 Demostración Matemática de la Cota Lineal O(n) de Heapify
+El algoritmo Heapify de Robert W. Floyd opera iterando desde el último nodo interno (el padre del último elemento, i = ⌊n/2⌋ - 1) hacia atrás hasta la raíz i = 0, invocando Sift-Down en cada posición. Los nodos hoja (que constituyen la mitad de los nodos del árbol, desde ⌊n/2⌋ hasta n-1) satisfacen trivialmente la propiedad de heap y no requieren ningún procesamiento.
+Para calcular el trabajo total realizado por Heapify, consideramos la altura del árbol h = ⌊log₂ n⌋. Un árbol binario completo de altura h posee a lo sumo ⌈n / 2^(k+1)⌉ nodos a una altura k (donde k=0 corresponde a las hojas y k=h corresponde a la raíz). El costo máximo de aplicar Sift-Down a un nodo situado a altura k es proporcional a k. Por consiguiente, el número total de operaciones de intercambio T(n) está acotado por la suma:
+$$ T(n) = \sum_{k=0}^{\lfloor \log_2 n \rfloor} \left\lceil \frac{n}{2^{k+1}} \right\rceil \cdot O(k) \le \frac{n}{2} \sum_{k=0}^{\infty} \frac{k}{2^k} $$
+Para evaluar la serie infinita ∑ (k=0 a ∞) k / 2^k, utilizamos la serie geométrica estándar:
+$$ \sum_{k=0}^{\infty} x^k = \frac{1}{1 - x} \quad \text{para } |x| < 1 $$
+Derivando ambos lados con respecto a x:
+$$ \sum_{k=0}^{\infty} k x^{k-1} = \frac{d}{dx} \left( \frac{1}{1 - x} \right) = \frac{1}{(1 - x)^2} $$
+Multiplicando toda la ecuación por x:
+$$ \sum_{k=0}^{\infty} k x^k = \frac{x}{(1 - x)^2} $$
+Sustituyendo x = 1/2 en la fórmula resultante:
+$$ \sum_{k=0}^{\infty} \frac{k}{2^k} = \frac{1/2}{(1 - 1/2)^2} = \frac{1/2}{1/4} = 2 $$
+Sustituyendo este resultado de la serie en la ecuación del trabajo total T(n):
+$$ T(n) \le \frac{n}{2} \cdot 2 = n \implies T(n) = O(n) $$
+Queda demostrado matemáticamente que el algoritmo de construcción Bottom-Up de Floyd reorganiza un arreglo arbitrario en un heap válido ejecutando a lo sumo 2n comparaciones, demostrando una complejidad lineal O(n), significativamente superior al enfoque ingenuo de O(n log n).
+
+Figura: Curvas comparativas de rendimiento: Construcción Heapify O(n) de Floyd vs N Inserciones O(n log n).
+💻 Programa 2: Algoritmo Heapify de Floyd O(n) en Dev-C++ 5.11
+// ============================================================================
+// CONSTRUCCIÓN DE HEAP EN TIEMPO LINEAL O(N) (ALGORITMO HEAPIFY DE FLOYD)
+// Código optimizado para Dev-C++ 5.11 / GCC 4.9.2
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <algorithm>
+
+using namespace std;
+
+// Función auxiliar Sift-Down para reajustar subárbol con raíz en i
+void minHeapify(vector<int>& arr, int n, int i) {
+    int smallest = i;
+    int left = 2 * i + 1;
+    int right = 2 * i + 2;
+
+    if (left < n && arr[left] < arr[smallest]) {
+        smallest = left;
+    }
+    if (right < n && arr[right] < arr[smallest]) {
+        smallest = right;
+    }
+    if (smallest != i) {
+        swap(arr[i], arr[smallest]);
+        minHeapify(arr, n, smallest);
+    }
+}
+
+// Algoritmo de Floyd para construir un Min-Heap en O(N)
+void buildMinHeap(vector<int>& arr) {
+    int n = arr.size();
+    // Iniciar desde el último nodo padre no-hoja: (n/2) - 1
+    for (int i = (n / 2) - 1; i >= 0; --i) {
+        minHeapify(arr, n, i);
+    }
+}
+
+int main() {
+    cout << "=== CONSTRUCCION LINEAL DE HEAP O(N) EN DEV-C++ 5.11 ===" << endl;
+    int datos[] = {95, 30, 80, 10, 50, 70, 20, 60, 40, 15, 85, 25};
+    int n = sizeof(datos) / sizeof(datos[0]);
+    vector<int> arr(datos, datos + n);
+
+    cout << "Arreglo desordenado original: [ ";
+    for (int i = 0; i < n; ++i) cout << arr[i] << " ";
+    cout << "]" << endl;
+
+    buildMinHeap(arr);
+
+    cout << "\nArreglo reorganizado como Min-Heap O(N): [ ";
+    for (int i = 0; i < n; ++i) cout << arr[i] << " ";
+    cout << "]" << endl;
+
+    return 0;
+}
+
+
+
+5. COLAS DE PRIORIDAD: DEFINICIÓN Y ADMINISTRACIÓN DE ELEMENTOS CON PRIORIDAD
+Una Cola de Prioridad (Priority Queue) es un Tipo de Dato Abstracto (ADT) que extiende el concepto tradicional de cola First-In, First-Out (FIFO). En una cola de prioridad, cada elemento almacenado posee una clave de prioridad asociada. La regla de atención establece que el elemento devuelto o removido en cualquier momento es de forma incondicional aquel que posee la mayor (o menor) prioridad, independientemente de su orden cronológico de llegada a la estructura.
+El ADT Cola de Prioridad define las siguientes operaciones fundamentales de administración:
+Insert / Push (e, p): Inserta un elemento 'e' con prioridad 'p' en la estructura. Complejidad esperada: O(log n).
+Find-Max / Top / Peek (): Retorna el elemento con mayor prioridad sin modificar la estructura. Complejidad esperada: O(1).
+Extract-Max / Pop (): Elimina y retorna el elemento con mayor prioridad de la estructura. Complejidad esperada: O(log n).
+Change-Key / Update-Key (e, nueva_p): Modifica la prioridad del elemento 'e' al nuevo valor 'nueva_p' y reorganiza la estructura. Complejidad esperada: O(log n).
+A continuación se presenta una matriz comparativa detallada de las distintas alternativas de implementación de una Cola de Prioridad y el costo asintótico asociado a sus operaciones:
+Estructura Subyacente
+Insert (Push)
+Find-Max (Top)
+Extract-Max (Pop)
+Change-Key
+
+Arreglo No Ordenado
+O(1)
+O(n)
+O(n)
+O(1)
+
+Arreglo Ordenado
+O(n)
+O(1)
+O(1)
+O(n)
+
+Lista Enlazada Ordenada
+O(n)
+O(1)
+O(1)
+O(n)
+
+Heap Binario (Estándar)
+O(log n)
+O(1)
+O(log n)
+O(log n)
+
+
+💻 Programa 3: Cola de Prioridad con Operación Change-Key en Dev-C++ 5.11
+// ============================================================================
+// COLA DE PRIORIDAD C++ CON SOPORTE PARA CAMBIO DE PRIORIDAD (CHANGE-KEY)
+// Compatible con Dev-C++ 5.11
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <string>
+#include <stdexcept>
+#include <algorithm>
+
+using namespace std;
+
+struct Elemento {
+    string id;
+    int prioridad;
+
+    Elemento(string s, int p) : id(s), prioridad(p) {}
+};
+
+class ColaPrioridadCustom {
+private:
+    vector<Elemento> heap;
+
+    int parent(int i) const { return (i - 1) / 2; }
+    int left(int i) const { return 2 * i + 1; }
+    int right(int i) const { return 2 * i + 2; }
+
+    void siftUp(int i) {
+        while (i > 0 && heap[parent(i)].prioridad < heap[i].prioridad) {
+            swap(heap[i], heap[parent(i)]);
+            i = parent(i);
+        }
+    }
+
+    void siftDown(int i) {
+        int maxIdx = i;
+        int l = left(i);
+        int r = right(i);
+        int n = heap.size();
+
+        if (l < n && heap[l].prioridad > heap[maxIdx].prioridad) maxIdx = l;
+        if (r < n && heap[r].prioridad > heap[maxIdx].prioridad) maxIdx = r;
+
+        if (i != maxIdx) {
+            swap(heap[i], heap[maxIdx]);
+            siftDown(maxIdx);
+        }
+    }
+
+public:
+    void push(const string& id, int prioridad) {
+        heap.push_back(Elemento(id, prioridad));
+        siftUp(heap.size() - 1);
+    }
+
+    Elemento top() const {
+        if (heap.empty()) throw runtime_error("Cola vacia.");
+        return heap[0];
+    }
+
+    Elemento pop() {
+        if (heap.empty()) throw runtime_error("Cola vacia.");
+        Elemento topElem = heap[0];
+        heap[0] = heap.back();
+        heap.pop_back();
+        if (!heap.empty()) siftDown(0);
+        return topElem;
+    }
+
+    bool changePriority(const string& id, int nuevaPrioridad) {
+        for (size_t i = 0; i < heap.size(); ++i) {
+            if (heap[i].id == id) {
+                int prioridadAntigua = heap[i].prioridad;
+                heap[i].prioridad = nuevaPrioridad;
+                if (nuevaPrioridad > prioridadAntigua) {
+                    siftUp(i);
+                } else {
+                    siftDown(i);
+                }
+                return true;
+            }
+        }
+        return false; // Elemento no encontrado
+    }
+
+    bool empty() const { return heap.empty(); }
+
+    void printState() const {
+        cout << "[ ";
+        for (size_t i = 0; i < heap.size(); ++i) {
+            cout << "(" << heap[i].id << ": " << heap[i].prioridad << ") ";
+        }
+        cout << "]" << endl;
+    }
+};
+
+int main() {
+    cout << "=== ADMINISTRACION DE COLA DE PRIORIDAD EN DEV-C++ 5.11 ===" << endl;
+    ColaPrioridadCustom pq;
+
+    pq.push("Tarea_Backup", 10);
+    pq.push("Tarea_Render", 50);
+    pq.push("Tarea_Red", 30);
+    pq.push("Tarea_Kernel", 90);
+
+    cout << "Estado inicial de la Cola de Prioridad:" << endl;
+    pq.printState();
+
+    cout << "\nIncrementando la prioridad de 'Tarea_Render' de 50 a 95 (Change-Key)..." << endl;
+    pq.changePriority("Tarea_Render", 95);
+    pq.printState();
+
+    cout << "\nProcesando elementos por orden estricto de prioridad:" << endl;
+    while (!pq.empty()) {
+        Elemento e = pq.pop();
+        cout << "Procesando: " << e.id << " (Prioridad: " << e.prioridad << ")" << endl;
+    }
+
+    return 0;
+}
+
+
+
+6. HEAPS BINOMIALES: ESTRUCTURA, ÁRBOLES BINOMIALES Y OPERACIÓN DE UNIÓN
+Aunque los montículos binarios son excepcionalmente eficientes para inserciones y extracciones O(log n), presentan una severa limitación algorítmica: la operación de fusión o unión (Union / Merge) de dos heaps binarios de tamaño n requiere concatenar los arreglos y ejecutar `Heapify`, con una complejidad de O(n). Para solventar esta ineficiencia, Jean Vuillemin introdujo en 1978 la estructura de Montículo Binomial (Binomial Heap).
+6.1 Árboles Binomiales (Binomial Trees B_k)
+Un Montículo Binomial está constituido por un bosque o colección de Árboles Binomiales B_k. Un árbol binomial de orden k se define recursivamente como sigue:
+Caso Base (B_0): El árbol binomial B_0 consiste en un único nodo independiente de grado 0.
+Caso Inductivo (B_k): Un árbol binomial de orden B_k se construye uniendo dos árboles binomiales idénticos de orden B_{k-1}, enlazando la raíz de uno como el hijo más a la izquierda de la raíz del otro.
+Demostración por Inducción del Número de Nodos |B_k| = 2^k:
+Caso Base (k=0): |B_0| = 1 = 2⁰ (Cierto).
+Hipotésis Inductiva: Asumimos cierto que para k=m, |B_m| = 2^m.
+Paso Inductivo (k=m+1): Por definición, B_{m+1} se forma uniendo dos árboles B_m. Por ende, |B_{m+1}| = |B_m| + |B_m| = 2^m + 2^m = 2 · 2^m = 2^(m+1). Q.E.D.
+Las propiedades matemáticas formales de un árbol binomial B_k son exactamente las siguientes:
+1. Número de Nodos: Posee exactamente 2^k nodos.
+2. Altura del Árbol: La altura del árbol es exactamente k.
+3. Grado de la Raíz: El grado de la raíz principal es k (posee k subárboles hijos: B_0, B_1, ..., B_{k-1}).
+4. Distribución de Nodos por Nivel (Coeficiente Binomial): El número de nodos a una profundidad d (donde 0 ≤ d ≤ k) viene dado exactamente por el coeficiente binomial C(k, d) = k! / (d! (k - d)!). Esta propiedad matemática otorga el nombre a la estructura.
+
+Figura: Construcción inductiva y recursiva de los Árboles Binomiales B₀, B₁, B₂ y B₃.
+6.2 Estructura del Montículo Binomial y Analogía con la Suma Binaria
+Un Montículo Binomial que contiene n elementos se organiza como una lista enlazada de raíces de árboles binomiales, ordenadas estrictamente por su grado k. Para cualquier entero n, existe un conjunto único de árboles binomiales presentes en el heap, determinado directamente por la representación binaria del número n.
+Por ejemplo, si un heap binomial almacena n = 13 elementos, convertimos 13 a su representación binaria 13₁₀ = 1101₂. Los bits en '1' (posiciones 2⁰, 2² y 2³) indican que el heap contiene exactamente tres árboles binomiales: B_0, B_2 y B_3 (con 1 + 4 + 8 = 13 nodos).
+Esta biyección matemática directa permite ejecutar la operación de Unión (Merge) de dos heaps binomiales H₁ y H₂ en tiempo logarítmico O(log n), siguiendo un procedimiento exactamente análogo a la adición de números binarios bit a bit con acarreo (Carry):
+
+Figura: Mecanismo de Unión (Merge) de Montículos Binomiales basado en la suma de bits.
+💻 Programa 4: Implementación Completa de Montículo Binomial en C++ (Dev-C++ 5.11)
+// ============================================================================
+// IMPLEMENTACIÓN COMPLETA DE MONTÍCULO BINOMIAL EN C++ (DEV-C++ 5.11)
+// Incluye operaciones de Unión (Merge), Inserción y Extracción del Mínimo
+// ============================================================================
+#include <iostream>
+#include <climits>
+#include <algorithm>
+
+using namespace std;
+
+struct NodeBinomial {
+    int key;
+    int degree;
+    NodeBinomial* parent;
+    NodeBinomial* child;
+    NodeBinomial* sibling;
+
+    NodeBinomial(int val) : key(val), degree(0), parent(NULL), child(NULL), sibling(NULL) {}
+};
+
+class BinomialHeap {
+private:
+    NodeBinomial* head;
+
+    // Enlazar dos árboles binomiales del mismo grado B_k para formar B_{k+1}
+    void linkTrees(NodeBinomial* minChild, NodeBinomial* maxParent) {
+        minChild->parent = maxParent;
+        minChild->sibling = maxParent->child;
+        maxParent->child = minChild;
+        maxParent->degree++;
+    }
+
+    // Fusionar las listas de raíces de dos heaps ordenadas por grado creciente
+    NodeBinomial* mergeRoots(NodeBinomial* h1, NodeBinomial* h2) {
+        if (h1 == NULL) return h2;
+        if (h2 == NULL) return h1;
+
+        NodeBinomial* headRes = NULL;
+        NodeBinomial** tailRes = &headRes;
+
+        while (h1 != NULL && h2 != NULL) {
+            if (h1->degree <= h2->degree) {
+                *tailRes = h1;
+                h1 = h1->sibling;
+            } else {
+                *tailRes = h2;
+                h2 = h2->sibling;
+            }
+            tailRes = &((*tailRes)->sibling);
+        }
+        if (h1 != NULL) *tailRes = h1;
+        else *tailRes = h2;
+
+        return headRes;
+    }
+
+public:
+    BinomialHeap() : head(NULL) {}
+
+    // Operación Principal: Unión de dos Heaps Binomiales en O(log N)
+    void unionHeap(BinomialHeap& other) {
+        NodeBinomial* newHead = mergeRoots(this->head, other.head);
+        this->head = NULL;
+        other.head = NULL;
+
+        if (newHead == NULL) return;
+
+        NodeBinomial* prev = NULL;
+        NodeBinomial* curr = newHead;
+        NodeBinomial* next = curr->sibling;
+
+        while (next != NULL) {
+            if ((curr->degree != next->degree) ||
+                (next->sibling != NULL && next->sibling->degree == curr->degree)) {
+                prev = curr;
+                curr = next;
+            } else {
+                if (curr->key <= next->key) {
+                    curr->sibling = next->sibling;
+                    linkTrees(next, curr);
+                } else {
+                    if (prev == NULL) newHead = next;
+                    else prev->sibling = next;
+                    linkTrees(curr, next);
+                    curr = next;
+                }
+            }
+            next = curr->sibling;
+        }
+        this->head = newHead;
+    }
+
+    void insert(int key) {
+        BinomialHeap tempHeap;
+        tempHeap.head = new NodeBinomial(key);
+        unionHeap(tempHeap);
+    }
+
+    int getMin() const {
+        if (head == NULL) throw runtime_error("Heap binomial vacio.");
+        int minVal = INT_MAX;
+        NodeBinomial* curr = head;
+        while (curr != NULL) {
+            if (curr->key < minVal) minVal = curr->key;
+            curr = curr->sibling;
+        }
+        return minVal;
+    }
+
+    int extractMin() {
+        if (head == NULL) throw runtime_error("Heap binomial vacio.");
+
+        NodeBinomial* minNode = head;
+        NodeBinomial* minPrev = NULL;
+        NodeBinomial* curr = head;
+        NodeBinomial* prev = NULL;
+        int minKey = head->key;
+
+        while (curr != NULL) {
+            if (curr->key < minKey) {
+                minKey = curr->key;
+                minNode = curr;
+                minPrev = prev;
+            }
+            prev = curr;
+            curr = curr->sibling;
+        }
+
+        if (minPrev == NULL) head = head->sibling;
+        else minPrev->sibling = minNode->sibling;
+
+        // Invertir la lista de hijos del nodo mínimo extraído
+        NodeBinomial* childList = NULL;
+        NodeBinomial* childCurr = minNode->child;
+        while (childCurr != NULL) {
+            NodeBinomial* nextChild = childCurr->sibling;
+            childCurr->sibling = childList;
+            childCurr->parent = NULL;
+            childList = childCurr;
+            childCurr = nextChild;
+        }
+
+        BinomialHeap tempHeap;
+        tempHeap.head = childList;
+        unionHeap(tempHeap);
+
+        delete minNode;
+        return minKey;
+    }
+
+    bool empty() const { return head == NULL; }
+};
+
+int main() {
+    cout << "=== DEMOSTRACION DE MONTICULO BINOMIAL EN DEV-C++ 5.11 ===" << endl;
+    BinomialHeap h1, h2;
+
+    cout << "Insertando elementos en Heap H1: {12, 7, 25, 15, 28}" << endl;
+    h1.insert(12); h1.insert(7); h1.insert(25); h1.insert(15); h1.insert(28);
+
+    cout << "Insertando elementos en Heap H2: {45, 3, 18, 30}" << endl;
+    h2.insert(45); h2.insert(3); h2.insert(18); h2.insert(30);
+
+    cout << "\nMinimo de H1: " << h1.getMin() << endl;
+    cout << "Minimo de H2: " << h2.getMin() << endl;
+
+    cout << "\nUniendo (Union/Merge) H2 en H1 en O(log N)..." << endl;
+    h1.unionHeap(h2);
+
+    cout << "Nuevo Minimo del Heap Unificado: " << h1.getMin() << endl;
+
+    cout << "\nExtrayendo todos los elementos en orden ascendente:" << endl;
+    while (!h1.empty()) {
+        cout << h1.extractMin() << " ";
+    }
+    cout << endl;
+
+    return 0;
+}
+
+
+
+7. COMPARACIÓN DE COMPLEJIDADES ASINTÓTICAS Y ANÁLISIS AMORTIZADO
+A continuación se presenta un análisis comparativo riguroso del comportamiento asintótico en el peor caso y en el caso amortizado para las estructuras de datos basadas en Heaps binarios, Heaps binomiales, Heaps de Fibonacci y Pairing Heaps:
+Operación Algorítmica
+Heap Binario (Array)
+Heap Binomial
+Heap de Fibonacci
+
+Find-Min / Find-Max
+O(1)
+O(log n) o O(1)*
+O(1)
+
+Insert
+O(log n)
+O(log n) [Amort. O(1)]
+O(1)
+
+Extract-Min / Extract-Max
+O(log n)
+O(log n)
+O(log n) amortizado
+
+Decrease-Key (Disminuir Clave)
+O(log n)
+O(log n)
+O(1) amortizado
+
+Delete (Eliminar Nodo)
+O(log n)
+O(log n)
+O(log n) amortizado
+
+Union / Merge (Unir Montículos)
+O(n)
+O(log n)
+O(1)
+
+Build-Heap (Construcción Inicial)
+O(n)
+O(n)
+O(n)
+
+
+8. APLICACIONES PRÁCTICAS Y CASOS DE USO REALES EN CIENCIAS DE LA COMPUTACIÓN
+Los montículos y las colas de prioridad constituyen el motor fundamental en una amplia gama de algoritmos y sistemas informáticos modernos:
+1. Planificación de Procesos en Sistemas Operativos: Gestión de tareas de CPU orientada a prioridades dinámicas (Shortest Job First, Multi-Level Feedback Queue).
+2. Algoritmos de Grafos: Algoritmo de Dijkstra para la búsqueda del camino más corto O((V + E) log V) y Algoritmo de Prim para el Árbol Colector Mínimo.
+3. Compresión de Datos (Codificación de Huffman): Construcción del árbol de frecuencias mínimas para compresión de archivos.
+4. Algoritmo de Ordenamiento Heapsort: Ordenamiento in-place con complejidad garantizada O(n log n) en el peor caso y espacio auxiliar O(1).
+5. Fusiones Masivas (K-Way Merging): Combinación eficiente de K archivos ordenados masivos en bases de datos y motores de búsqueda.
+6. Simulaciones de Eventos Discretos (DES): Procesamiento de eventos en tiempo simulado utilizando un Min-Heap ordenado por marcas de tiempo (timestamps).
+
+Figura: Mapa de arquitectura de aplicaciones prácticas de Heaps en Ciencias de la Computación.
+8.1 Análisis Comparativo de Rendimiento Práctico en Dev-C++ 5.11
+Al compilar en Dev-C++ 5.11 con GCC 4.9.2, los algoritmos basados en arreglos continuos (como `MaxHeap` y `std::priority_queue`) demuestran una velocidad de ejecución significativamente mayor en hardware real que los montículos dinámicos basados en punteros (como `BinomialHeap`). Esta diferencia práctica proviene del comportamiento del Caché L1/L2 del microprocesador. El arreglo continuo aprovecha las líneas de caché de 64 bytes para precargar múltiples elementos adyacentes en memoria, mientras que los punteros dispersos provocan fallos de caché frecuentes. Por ende, en aplicaciones donde la operación de Unión no es requerida con frecuencia, el Min/Max Heap binario tradicional en arreglo es la opción recomendada.
+💻 Programa 5: Algoritmo de Dijkstra con Priority Queue en Dev-C++ 5.11
+// ============================================================================
+// ALGORITMO DE DIJKSTRA USANDO COLA DE PRIORIDAD C++ (DEV-C++ 5.11)
+// Calculo del camino mas corto desde un nodo origen a todos los vertices
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <utility>
+#include <climits>
+
+using namespace std;
+
+typedef pair<int, int> iPair; // (distancia, nodo)
+
+void dijkstra(int src, const vector<vector<iPair> >& adj, int V) {
+    priority_queue<iPair, vector<iPair>, greater<iPair> > pq;
+    vector<int> dist(V, INT_MAX);
+
+    pq.push(make_pair(0, src));
+    dist[src] = 0;
+
+    while (!pq.empty()) {
+        int u = pq.top().second;
+        int d = pq.top().first;
+        pq.pop();
+
+        if (d > dist[u]) continue;
+
+        for (size_t i = 0; i < adj[u].size(); ++i) {
+            int v = adj[u][i].first;
+            int weight = adj[u][i].second;
+
+            if (dist[u] + weight < dist[v]) {
+                dist[v] = dist[u] + weight;
+                pq.push(make_pair(dist[v], v));
+            }
+        }
+    }
+
+    cout << "Distancias minimas desde el nodo origen (" << src << "):" << endl;
+    for (int i = 0; i < V; ++i) {
+        cout << "Nodo " << i << " : " << (dist[i] == INT_MAX ? -1 : dist[i]) << endl;
+    }
+}
+
+int main() {
+    cout << "=== ALGORITMO DE DIJKSTRA EN DEV-C++ 5.11 ===" << endl;
+    int V = 5;
+    vector<vector<iPair> > adj(V);
+
+    // Grafo dirigido ponderado (u, v, peso)
+    adj[0].push_back(make_pair(1, 9));
+    adj[0].push_back(make_pair(2, 6));
+    adj[0].push_back(make_pair(3, 5));
+    adj[0].push_back(make_pair(4, 3));
+    adj[2].push_back(make_pair(1, 2));
+    adj[2].push_back(make_pair(3, 4));
+    adj[4].push_back(make_pair(3, 1));
+
+    dijkstra(0, adj, V);
+
+    return 0;
+}
+
+
+
+💻 Programa 6: Codificación de Huffman en Dev-C++ 5.11
+// ============================================================================
+// CODIFICACIÓN DE HUFFMAN USANDO MIN-HEAP EN C++ (DEV-C++ 5.11)
+// Compresión de texto mediante árbol de frecuencias
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <string>
+
+using namespace std;
+
+struct NodeHuffman {
+    char data;
+    unsigned freq;
+    NodeHuffman *left, *right;
+
+    NodeHuffman(char d, unsigned f) : data(d), freq(f), left(NULL), right(NULL) {}
+};
+
+struct CompareHuffman {
+    bool operator()(NodeHuffman* l, NodeHuffman* r) {
+        return l->freq > r->freq;
+    }
+};
+
+void printCodes(NodeHuffman* root, string str) {
+    if (!root) return;
+    if (root->data != '$') {
+        cout << "Caracter: '" << root->data << "' -> Codigo Huffman: " << str << "\n";
+    }
+    printCodes(root->left, str + "0");
+    printCodes(root->right, str + "1");
+}
+
+void buildHuffmanTree(char data[], int freq[], int size) {
+    priority_queue<NodeHuffman*, vector<NodeHuffman*>, CompareHuffman> minHeap;
+
+    for (int i = 0; i < size; ++i) {
+        minHeap.push(new NodeHuffman(data[i], freq[i]));
+    }
+
+    while (minHeap.size() != 1) {
+        NodeHuffman* left = minHeap.top(); minHeap.pop();
+        NodeHuffman* right = minHeap.top(); minHeap.pop();
+
+        NodeHuffman* top = new NodeHuffman('$', left->freq + right->freq);
+        top->left = left;
+        top->right = right;
+        minHeap.push(top);
+    }
+
+    cout << "\nCodigos de Huffman generados:" << endl;
+    printCodes(minHeap.top(), "");
+}
+
+int main() {
+    cout << "=== ALGORITMO DE COMPRESION HUFFMAN EN DEV-C++ 5.11 ===" << endl;
+    char arr[] = { 'a', 'b', 'c', 'd', 'e', 'f' };
+    int freq[] = { 5, 9, 12, 13, 16, 45 };
+    int size = sizeof(arr) / sizeof(arr[0]);
+
+    buildHuffmanTree(arr, freq, size);
+
+    return 0;
+}
+
+
+
+💻 Programa 7: Algoritmo Heapsort In-Place en Dev-C++ 5.11
+// ============================================================================
+// ALGORITMO DE ORDENAMIENTO HEAPSORT IN-PLACE EN C++ (DEV-C++ 5.11)
+// Complejidad O(N log N) garantizada en el peor caso sin memoria adicional
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <algorithm>
+
+using namespace std;
+
+void heapify(vector<int>& arr, int n, int i) {
+    int largest = i;
+    int l = 2 * i + 1;
+    int r = 2 * i + 2;
+
+    if (l < n && arr[l] > arr[largest]) largest = l;
+    if (r < n && arr[r] > arr[largest]) largest = r;
+
+    if (largest != i) {
+        swap(arr[i], arr[largest]);
+        heapify(arr, n, largest);
+    }
+}
+
+void heapSort(vector<int>& arr) {
+    int n = arr.size();
+
+    // 1. Construir Max-Heap en O(N)
+    for (int i = n / 2 - 1; i >= 0; --i) {
+        heapify(arr, n, i);
+    }
+
+    // 2. Extraer elementos uno por uno e intercambiar con el final
+    for (int i = n - 1; i > 0; --i) {
+        swap(arr[0], arr[i]);
+        heapify(arr, i, 0);
+    }
+}
+
+int main() {
+    cout << "=== ALGORITMO HEAPSORT EN DEV-C++ 5.11 ===" << endl;
+    int datos[] = {12, 11, 13, 5, 6, 7, 1, 9, 3, 2, 8, 4};
+    int n = sizeof(datos) / sizeof(datos[0]);
+    vector<int> arr(datos, datos + n);
+
+    cout << "Arreglo original: [ ";
+    for (int i = 0; i < n; ++i) cout << arr[i] << " ";
+    cout << "]" << endl;
+
+    heapSort(arr);
+
+    cout << "Arreglo ordenado con Heapsort: [ ";
+    for (int i = 0; i < n; ++i) cout << arr[i] << " ";
+    cout << "]" << endl;
+
+    return 0;
+}
+
+
+
+💻 Programa 8: K-Way Merging con Min-Heap en Dev-C++ 5.11
+// ============================================================================
+// FUSIÓN DE K ARREGLOS ORDENADOS (K-WAY MERGE) EN C++ (DEV-C++ 5.11)
+// Uso de Min-Heap para combinar K listas ordenadas en tiempo O(N log K)
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <queue>
+
+using namespace std;
+
+struct ElementoK {
+    int valor;
+    int arrIdx;
+    int elemIdx;
+
+    ElementoK(int v, int a, int e) : valor(v), arrIdx(a), elemIdx(e) {}
+
+    bool operator>(const ElementoK& other) const {
+        return valor > other.valor;
+    }
+};
+
+vector<int> mergeKArrays(const vector<vector<int> >& arrays) {
+    priority_queue<ElementoK, vector<ElementoK>, greater<ElementoK> > pq;
+    vector<int> resultado;
+
+    // Insertar el primer elemento de cada arreglo en la priority_queue
+    for (size_t i = 0; i < arrays.size(); ++i) {
+        if (!arrays[i].empty()) {
+            pq.push(ElementoK(arrays[i][0], i, 0));
+        }
+    }
+
+    while (!pq.empty()) {
+        ElementoK curr = pq.top();
+        pq.pop();
+
+        resultado.push_back(curr.valor);
+
+        // Si el arreglo de origen tiene mas elementos, insertar el siguiente
+        if (curr.elemIdx + 1 < (int)arrays[curr.arrIdx].size()) {
+            pq.push(ElementoK(arrays[curr.arrIdx][curr.elemIdx + 1], curr.arrIdx, curr.elemIdx + 1));
+        }
+    }
+
+    return resultado;
+}
+
+int main() {
+    cout << "=== FUSION DE K ARREGLOS ORDENADOS (K-WAY MERGE) EN DEV-C++ 5.11 ===" << endl;
+
+    vector<vector<int> > arrays(3);
+    arrays[0].push_back(1); arrays[0].push_back(5); arrays[0].push_back(9);
+    arrays[1].push_back(2); arrays[1].push_back(6); arrays[1].push_back(8);
+    arrays[2].push_back(3); arrays[2].push_back(7); arrays[2].push_back(10);
+
+    vector<int> res = mergeKArrays(arrays);
+
+    cout << "Resultado de fusionar K arreglos ordenados: [ ";
+    for (size_t i = 0; i < res.size(); ++i) cout << res[i] << " ";
+    cout << "]" << endl;
+
+    return 0;
+}
+
+
+
+💻 Programa 9: Planificador de Procesos de SO en Dev-C++ 5.11
+// ============================================================================
+// SIMULACIÓN DE PLANIFICADOR DE TAREAS EN SISTEMAS OPERATIVOS (DEV-C++ 5.11)
+// Administración de procesos por prioridades dinámicas mediante Max-Heap
+// ============================================================================
+#include <iostream>
+#include <vector>
+#include <string>
+#include <queue>
+
+using namespace std;
+
+struct Proceso {
+    int pid;
+    string nombre;
+    int prioridad;
+    int ciclosCPU;
+
+    Proceso(int p, string n, int prio, int c) 
+        : pid(p), nombre(n), prioridad(prio), ciclosCPU(c) {}
+
+    bool operator<(const Proceso& other) const {
+        return prioridad < other.prioridad; // Mayor prioridad sale primero
+    }
+};
+
+class PlanificadorCPU {
+private:
+    priority_queue<Proceso> colaProcesos;
+
+public:
+    void agregarProceso(int pid, const string& nombre, int prioridad, int ciclos) {
+        colaProcesos.push(Proceso(pid, nombre, prioridad, ciclos));
+        cout << "[SO] Proceso agregado: " << nombre << " (PID=" << pid << ", Prioridad=" << prioridad << ")" << endl;
+    }
+
+    void ejecutarPlanificacion() {
+        cout << "\n=== INICIANDO EJECUCION DE PROCESOS EN CPU ===" << endl;
+        while (!colaProcesos.empty()) {
+            Proceso p = colaProcesos.top();
+            colaProcesos.pop();
+            cout << "[CPU] Ejecutando PID " << p.pid << " (" << p.nombre << ") | Prioridad: " 
+                 << p.prioridad << " | Ráfaga CPU: " << p.ciclosCPU << " ms" << endl;
+        }
+        cout << "[SO] Todos los procesos se han completado con éxito." << endl;
+    }
+};
+
+int main() {
+    cout << "=== SIMULACION DE PLANIFICADOR DE CPU EN DEV-C++ 5.11 ===" << endl;
+    PlanificadorCPU scheduler;
+
+    scheduler.agregarProceso(101, "Servicio_Impresion", 20, 15);
+    scheduler.agregarProceso(102, "Interrupcion_Teclado", 99, 2);
+    scheduler.agregarProceso(103, "Renderizado_Video", 40, 120);
+    scheduler.agregarProceso(104, "Driver_Red_Paquete", 85, 5);
+
+    scheduler.ejecutarPlanificacion();
+
+    return 0;
+}
+
+
+
+💻 Programa 10: Simulador de Eventos Discretos en Dev-C++ 5.11
+// ============================================================================
+// SIMULACIÓN DE EVENTOS DISCRETOS (DES) EN C++ (DEV-C++ 5.11)
+// Procesamiento de eventos en tiempo simulado utilizando Min-Heap (priority_queue)
+// ============================================================================
+#include <iostream>
+#include <queue>
+#include <string>
+
+using namespace std;
+
+struct Evento {
+    double timestamp;
+    string descripcion;
+
+    Evento(double t, string desc) : timestamp(t), descripcion(desc) {}
+
+    // Ordenamiento por menor timestamp (Min-Heap)
+    bool operator>(const Evento& otro) const {
+        return timestamp > otro.timestamp;
+    }
+};
+
+class SimuladorEventos {
+private:
+    priority_queue<Evento, vector<Evento>, greater<Evento> > colaEventos;
+    double tiempoActual;
+
+public:
+    SimuladorEventos() : tiempoActual(0.0) {}
+
+    void agendarEvento(double deltaTiempo, const string& desc) {
+        double t = tiempoActual + deltaTiempo;
+        colaEventos.push(Evento(t, desc));
+        cout << "[Simulador] Evento agendado en t=" << t << " s : " << desc << endl;
+    }
+
+    void ejecutarSimulacion() {
+        cout << "\n=== INICIANDO MOTOR DE SIMULACION DISCRETA ===" << endl;
+        while (!colaEventos.empty()) {
+            Evento e = colaEventos.top();
+            colaEventos.pop();
+            tiempoActual = e.timestamp;
+            cout << "[t = " << tiempoActual << " s] Procesando: " << e.descripcion << endl;
+        }
+        cout << "=== SIMULACION FINALIZADA EN t = " << tiempoActual << " s ===" << endl;
+    }
+};
+
+int main() {
+    cout << "=== MOTOR DE SIMULACION DE EVENTOS DISCRETOS EN DEV-C++ 5.11 ===" << endl;
+    SimuladorEventos sim;
+
+    sim.agendarEvento(1.5, "Llegada_Cliente_1");
+    sim.agendarEvento(0.5, "Inicio_Sistema");
+    sim.agendarEvento(3.0, "Llegada_Cliente_2");
+    sim.agendarEvento(2.0, "Atencion_Cliente_1");
+    sim.agendarEvento(5.0, "Cierre_Caja");
+
+    sim.ejecutarSimulacion();
+
+    return 0;
+}
+
+
+
+9. CONCLUSIONES Y SÍNTESIS GENERAL
+El estudio detallado de los montículos binarios, colas de prioridad y montículos binomiales permite sintetizar las siguientes conclusiones fundamentales:
+1. Eficiencia Estructural del Heap Binario: La representación contigua en arreglo elimina los punteros en memoria y garantiza el acceso constante O(1) al elemento óptimo, con operaciones de reajuste logarítmicas O(log n) respaldadas por una localización espacial superior en caché.
+2. Potencia del Algoritmo de Floyd: La reorganización Bottom-Up demuestra matemáticamente que es posible construir un heap en tiempo estrictamente lineal O(n), superando sustancialmente las n inserciones sucesivas de O(n log n).
+3. Ventaja de los Heaps Binomiales: Para escenarios donde la operación de unión (Merge) de colecciones es frecuente, los Heaps Binomiales reducen la complejidad de la fusión de O(n) a O(log n), alineando la estructura con la aritmética binaria.
+4. Portabilidad y Compatibilidad en C++: Todas las implementaciones proporcionadas cumplen con los estándares de C++98 / C++11 y son 100% compatibles con entornos de desarrollo clásicos como Dev-C++ 5.11 (compilador MinGW GCC 4.9.2), ofreciendo código robusto para su ejecución práctica.
+9.1 Referencias Bibliográficas y Fuentes Académicas
+1. Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2009). Introduction to Algorithms (3rd ed.). MIT Press.
+2. Floyd, R. W. (1964). Algorithm 245: Treesort 3. Communications of the ACM, 7(12), 701.
+3. Vuillemin, J. (1978). A data structure for manipulating priority queues. Communications of the ACM, 21(4), 309-315.
+4. Williams, J. W. J. (1964). Algorithm 232: Heapsort. Communications of the ACM, 7(6), 347-348.
+5. Knuth, D. E. (1998). The Art of Computer Programming, Volume 3: Sorting and Searching (2nd ed.). Addison-Wesley.
