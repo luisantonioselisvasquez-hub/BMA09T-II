@@ -1,0 +1,408 @@
+QUADTREE
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+#define CAPACIDAD 4
+#define MAX_PROFUNDIDAD 20
+
+typedef struct {
+    float x, y;
+} Punto;
+
+typedef struct Nodo {
+    float xmin, xmax;
+    float ymin, ymax;
+
+    Punto *puntos;
+    int cantidad;
+    int capacidad;
+
+    struct Nodo *hijos[4];
+    int dividido;
+} Nodo;
+
+Nodo* crearNodo(float xmin, float xmax,
+                float ymin, float ymax) {
+
+    Nodo *nuevo = (Nodo*)malloc(sizeof(Nodo));
+
+    if (nuevo == NULL) {
+        printf("Error al reservar memoria.\n");
+        exit(1);
+    }
+
+    nuevo->xmin = xmin;
+    nuevo->xmax = xmax;
+    nuevo->ymin = ymin;
+    nuevo->ymax = ymax;
+
+    nuevo->puntos = NULL;
+    nuevo->cantidad = 0;
+    nuevo->capacidad = 0;
+    nuevo->dividido = 0;
+
+    for (int i = 0; i < 4; i++)
+        nuevo->hijos[i] = NULL;
+
+    return nuevo;
+}
+
+int contiene(Nodo *nodo, Punto p) {
+    return p.x >= nodo->xmin &&
+           p.x <= nodo->xmax &&
+           p.y >= nodo->ymin &&
+           p.y <= nodo->ymax;
+}
+
+
+void guardarPunto(Nodo *nodo, Punto p) {
+
+    if (nodo->cantidad == nodo->capacidad) {
+
+        int nuevaCapacidad =
+            (nodo->capacidad == 0) ?
+            CAPACIDAD : nodo->capacidad * 2;
+
+        Punto *nuevo = (Punto*)realloc(
+            nodo->puntos,
+            nuevaCapacidad * sizeof(Punto)
+        );
+
+        if (nuevo == NULL) {
+            printf("Error al ampliar memoria.\n");
+            exit(1);
+        }
+
+        nodo->puntos = nuevo;
+        nodo->capacidad = nuevaCapacidad;
+    }
+
+    nodo->puntos[nodo->cantidad++] = p;
+}
+
+
+int obtenerCuadrante(Nodo *nodo, Punto p) {
+
+    float xm = (nodo->xmin + nodo->xmax) / 2;
+    float ym = (nodo->ymin + nodo->ymax) / 2;
+
+    int este = (p.x >= xm);
+    int norte = (p.y >= ym);
+
+    if (norte && !este) return 0; // Noroeste
+    if (norte && este)  return 1; // Noreste
+    if (!norte && !este) return 2; // Suroeste
+
+    return 3; // Sureste
+}
+
+void insertar(Nodo *nodo, Punto p, int profundidad);
+
+
+void subdividir(Nodo *nodo, int profundidad) {
+
+    float xm = (nodo->xmin + nodo->xmax) / 2;
+    float ym = (nodo->ymin + nodo->ymax) / 2;
+
+    nodo->hijos[0] = crearNodo(
+        nodo->xmin, xm, ym, nodo->ymax
+    );
+
+    nodo->hijos[1] = crearNodo(
+        xm, nodo->xmax, ym, nodo->ymax
+    );
+
+    nodo->hijos[2] = crearNodo(
+        nodo->xmin, xm, nodo->ymin, ym
+    );
+
+    nodo->hijos[3] = crearNodo(
+        xm, nodo->xmax, nodo->ymin, ym
+    );
+
+    nodo->dividido = 1;
+
+    // Redistribuir los puntos anteriores
+    Punto *anteriores = nodo->puntos;
+    int cantidadAnterior = nodo->cantidad;
+
+    nodo->puntos = NULL;
+    nodo->cantidad = 0;
+    nodo->capacidad = 0;
+
+    for (int i = 0; i < cantidadAnterior; i++) {
+        insertar(nodo, anteriores[i], profundidad);
+    }
+
+    free(anteriores);
+}
+
+
+void insertar(Nodo *nodo, Punto p, int profundidad) {
+
+    if (!contiene(nodo, p))
+        return;
+
+    // Si ya esta dividido, bajar al cuadrante correspondiente
+    if (nodo->dividido) {
+        int indice = obtenerCuadrante(nodo, p);
+
+        insertar(nodo->hijos[indice], p, profundidad + 1);
+        return;
+    }
+
+    
+    if (nodo->cantidad < CAPACIDAD ||
+        profundidad >= MAX_PROFUNDIDAD) {
+
+        guardarPunto(nodo, p);
+        return;
+    }
+
+
+    subdividir(nodo, profundidad);
+
+    int indice = obtenerCuadrante(nodo, p);
+
+    insertar(nodo->hijos[indice], p, profundidad + 1);
+}
+
+
+int buscar(Nodo *nodo, Punto p) {
+
+    if (!contiene(nodo, p))
+        return 0;
+
+    if (nodo->dividido) {
+        int indice = obtenerCuadrante(nodo, p);
+
+        return buscar(nodo->hijos[indice], p);
+    }
+
+    for (int i = 0; i < nodo->cantidad; i++) {
+
+        if (nodo->puntos[i].x == p.x &&
+            nodo->puntos[i].y == p.y) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+int intersecta(Nodo *nodo, float xmin, float xmax,
+               float ymin, float ymax) {
+
+    return !(nodo->xmax < xmin ||
+             nodo->xmin > xmax ||
+             nodo->ymax < ymin ||
+             nodo->ymin > ymax);
+}
+
+
+void consultaRango(Nodo *nodo,
+                   float xmin, float xmax,
+                   float ymin, float ymax) {
+
+    if (!intersecta(nodo, xmin, xmax, ymin, ymax))
+        return;
+
+    if (nodo->dividido) {
+
+        for (int i = 0; i < 4; i++) {
+            consultaRango(
+                nodo->hijos[i],
+                xmin, xmax, ymin, ymax
+            );
+        }
+
+    } else {
+
+        for (int i = 0; i < nodo->cantidad; i++) {
+
+            Punto p = nodo->puntos[i];
+
+            if (p.x >= xmin && p.x <= xmax &&
+                p.y >= ymin && p.y <= ymax) {
+
+                printf("(%.2f, %.2f)\n", p.x, p.y);
+            }
+        }
+    }
+}
+
+
+float distancia(Punto a, Punto b) {
+
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+
+    return dx * dx + dy * dy;
+}
+
+void vecinoCercano(Nodo *nodo, Punto consulta,
+                   Punto *mejor, float *distMin) {
+
+    if (nodo->dividido) {
+
+        for (int i = 0; i < 4; i++) {
+            vecinoCercano(
+                nodo->hijos[i],
+                consulta,
+                mejor,
+                distMin
+            );
+        }
+
+    } else {
+
+        for (int i = 0; i < nodo->cantidad; i++) {
+
+            float d = distancia(nodo->puntos[i], consulta);
+
+            if (d < *distMin) {
+                *distMin = d;
+                *mejor = nodo->puntos[i];
+            }
+        }
+    }
+}
+
+
+void liberarQuadtree(Nodo *nodo) {
+
+    if (nodo == NULL)
+        return;
+
+    for (int i = 0; i < 4; i++)
+        liberarQuadtree(nodo->hijos[i]);
+
+    free(nodo->puntos);
+    free(nodo);
+}
+
+int main() {
+
+    Nodo *raiz = crearNodo(0, 100, 0, 100);
+
+    Punto iniciales[] = {
+        {20, 30},
+        {25, 40},
+        {70, 80},
+        {80, 20},
+        {10, 15},
+        {60, 60},
+        {35, 45},
+        {90, 90}
+    };
+
+    int n = sizeof(iniciales) / sizeof(iniciales[0]);
+
+    
+    for (int i = 0; i < n; i++)
+        insertar(raiz, iniciales[i], 0);
+
+    int opcion;
+    Punto p;
+
+    do {
+
+        printf("\n========== QUADTREE ==========\n");
+        printf("1. Insertar punto\n");
+        printf("2. Buscar punto\n");
+        printf("3. Consulta de rango\n");
+        printf("4. Vecino mas cercano\n");
+        printf("0. Salir\n");
+        printf("Seleccione una opcion: ");
+
+        scanf("%d", &opcion);
+
+        switch (opcion) {
+
+            case 1:
+
+                printf("Ingrese x e y: ");
+                scanf("%f %f", &p.x, &p.y);
+
+                if (contiene(raiz, p)) {
+                    insertar(raiz, p, 0);
+                    printf("Punto insertado.\n");
+                } else {
+                    printf("El punto esta fuera de la region.\n");
+                }
+
+                break;
+
+            case 2:
+
+                printf("Ingrese x e y: ");
+                scanf("%f %f", &p.x, &p.y);
+
+                if (buscar(raiz, p))
+                    printf("Punto encontrado.\n");
+                else
+                    printf("Punto no encontrado.\n");
+
+                break;
+
+            case 3: {
+
+                float xmin, xmax, ymin, ymax;
+
+                printf("Ingrese xmin xmax ymin ymax: ");
+                scanf("%f %f %f %f",
+                      &xmin, &xmax, &ymin, &ymax);
+
+                if (xmin > xmax || ymin > ymax) {
+                    printf("Rango no valido.\n");
+                } else {
+                    printf("Puntos encontrados:\n");
+
+                    consultaRango(
+                        raiz, xmin, xmax, ymin, ymax
+                    );
+                }
+
+                break;
+            }
+
+            case 4: {
+
+                Punto mejor;
+                float distMin = INFINITY;
+
+                printf("Ingrese x e y de consulta: ");
+                scanf("%f %f", &p.x, &p.y);
+
+                vecinoCercano(raiz, p, &mejor, &distMin);
+
+                if (distMin != INFINITY) {
+                    printf("Vecino mas cercano: (%.2f, %.2f)\n",
+                           mejor.x, mejor.y);
+
+                    printf("Distancia: %.2f\n", sqrtf(distMin));
+                } else {
+                    printf("No hay puntos almacenados.\n");
+                }
+
+                break;
+            }
+
+            case 0:
+                printf("Finalizando programa...\n");
+                break;
+
+            default:
+                printf("Opcion no valida.\n");
+        }
+
+    } while (opcion != 0);
+
+    liberarQuadtree(raiz);
+
+    return 0;
+}

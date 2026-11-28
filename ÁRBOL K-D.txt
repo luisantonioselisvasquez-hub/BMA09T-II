@@ -1,0 +1,209 @@
+ÁRBOL K-D
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+typedef struct Punto {
+    float x, y;
+} Punto;
+
+typedef struct Nodo {
+    Punto punto;
+    struct Nodo *izq;
+    struct Nodo *der;
+} Nodo;
+
+
+Nodo* crearNodo(float x, float y) {
+    Nodo *nuevo = (Nodo*)malloc(sizeof(Nodo));
+
+    if (nuevo == NULL) {
+        printf("Error al reservar memoria.\n");
+        exit(1);
+    }
+
+    nuevo->punto.x = x;
+    nuevo->punto.y = y;
+    nuevo->izq = NULL;
+    nuevo->der = NULL;
+
+    return nuevo;
+}
+
+
+Nodo* insertar(Nodo *raiz, float x, float y, int nivel) {
+    if (raiz == NULL)
+        return crearNodo(x, y);
+
+    int dimension = nivel % 2;
+
+    if ((dimension == 0 && x < raiz->punto.x) ||
+        (dimension == 1 && y < raiz->punto.y)) {
+        raiz->izq = insertar(raiz->izq, x, y, nivel + 1);
+    } else {
+        raiz->der = insertar(raiz->der, x, y, nivel + 1);
+    }
+
+    return raiz;
+}
+
+
+int buscar(Nodo *raiz, float x, float y, int nivel) {
+    if (raiz == NULL)
+        return 0;
+
+    if (raiz->punto.x == x && raiz->punto.y == y)
+        return 1;
+
+    int dimension = nivel % 2;
+
+    if ((dimension == 0 && x < raiz->punto.x) ||
+        (dimension == 1 && y < raiz->punto.y)) {
+        return buscar(raiz->izq, x, y, nivel + 1);
+    }
+
+    return buscar(raiz->der, x, y, nivel + 1);
+}
+
+
+void consultaRango(Nodo *raiz, float xmin, float xmax,
+                   float ymin, float ymax) {
+    if (raiz == NULL)
+        return;
+
+    float x = raiz->punto.x;
+    float y = raiz->punto.y;
+
+    if (x >= xmin && x <= xmax &&
+        y >= ymin && y <= ymax) {
+        printf("(%.2f, %.2f)\n", x, y);
+    }
+
+    // Se recorren los nodos que pueden contener resultados
+    if (raiz->punto.x >= xmin)
+        consultaRango(raiz->izq, xmin, xmax, ymin, ymax);
+
+    if (raiz->punto.x <= xmax)
+        consultaRango(raiz->der, xmin, xmax, ymin, ymax);
+}
+
+
+float distancia(Punto a, Punto b) {
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+
+    return dx * dx + dy * dy;
+}
+
+
+void vecinoCercano(Nodo *raiz, Punto consulta,
+                   Punto *mejor, float *distMin) {
+    if (raiz == NULL)
+        return;
+
+    float d = distancia(raiz->punto, consulta);
+
+    if (d < *distMin) {
+        *distMin = d;
+        *mejor = raiz->punto;
+    }
+
+    vecinoCercano(raiz->izq, consulta, mejor, distMin);
+    vecinoCercano(raiz->der, consulta, mejor, distMin);
+}
+
+
+void liberarArbol(Nodo *raiz) {
+    if (raiz == NULL)
+        return;
+
+    liberarArbol(raiz->izq);
+    liberarArbol(raiz->der);
+    free(raiz);
+}
+
+int main() {
+    Nodo *raiz = NULL;
+    int opcion;
+    float x, y;
+
+    // Puntos iniciales
+    raiz = insertar(raiz, 30, 40, 0);
+    raiz = insertar(raiz, 5, 25, 0);
+    raiz = insertar(raiz, 70, 70, 0);
+    raiz = insertar(raiz, 10, 12, 0);
+    raiz = insertar(raiz, 50, 30, 0);
+    raiz = insertar(raiz, 35, 45, 0);
+
+    do {
+        printf("\n===== ARBOL K-D =====\n");
+        printf("1. Insertar punto\n");
+        printf("2. Buscar punto\n");
+        printf("3. Consulta de rango\n");
+        printf("4. Vecino mas cercano\n");
+        printf("0. Salir\n");
+        printf("Seleccione: ");
+        scanf("%d", &opcion);
+
+        switch (opcion) {
+            case 1:
+                printf("Ingrese x e y: ");
+                scanf("%f %f", &x, &y);
+                raiz = insertar(raiz, x, y, 0);
+                printf("Punto insertado.\n");
+                break;
+
+            case 2:
+                printf("Ingrese x e y: ");
+                scanf("%f %f", &x, &y);
+
+                if (buscar(raiz, x, y, 0))
+                    printf("Punto encontrado.\n");
+                else
+                    printf("Punto no encontrado.\n");
+                break;
+
+            case 3: {
+                float xmin, xmax, ymin, ymax;
+
+                printf("Ingrese xmin xmax ymin ymax: ");
+                scanf("%f %f %f %f",
+                      &xmin, &xmax, &ymin, &ymax);
+
+                printf("Puntos encontrados:\n");
+                consultaRango(raiz, xmin, xmax, ymin, ymax);
+                break;
+            }
+
+            case 4: {
+                Punto consulta, mejor;
+                float distMin = INFINITY;
+
+                printf("Ingrese x e y de consulta: ");
+                scanf("%f %f", &consulta.x, &consulta.y);
+
+                vecinoCercano(raiz, consulta, &mejor, &distMin);
+
+                if (distMin != INFINITY) {
+                    printf("Vecino mas cercano: (%.2f, %.2f)\n",
+                           mejor.x, mejor.y);
+                    printf("Distancia: %.2f\n", sqrtf(distMin));
+                }
+                break;
+            }
+
+            case 0:
+                printf("Finalizando programa...\n");
+                break;
+
+            default:
+                printf("Opcion no valida.\n");
+        }
+
+    } while (opcion != 0);
+
+    liberarArbol(raiz);
+
+    return 0;
+}
